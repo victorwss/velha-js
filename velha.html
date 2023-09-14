@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+    <head>
+        <title>Jogo da Velha</title>
+        <style>
+            body {
+                text-align: center;
+            }
+            p, button {
+                font-size: 25px;
+            }
+            .escolhido {
+                background-color: cyan;
+            }
+        </style>
+        <script>
+            "use strict";
+
+            // Partes de desenho:
+
+            const tamanhoTotal = 450;
+            const margem = 20;
+            const tamanhoCela = tamanhoTotal / 3;
+            const metadeCela = tamanhoCela / 2;
+
+            function acharCanvas() {
+                return document.querySelector("canvas");
+            }
+
+            function acharContexto() {
+                return acharCanvas().getContext("2d");
+            }
+
+            function limpar() {
+                const ctx = acharContexto();
+                ctx.beginPath();
+                ctx.clearRect(0, 0, tamanhoTotal, tamanhoTotal);
+            }
+
+            function desenharGrade() {
+                const ctx = acharContexto();
+                ctx.lineWidth = 15;
+                ctx.strokeStyle = "green";
+                ctx.beginPath();
+                ctx.moveTo(tamanhoTotal * 1/3, 0           );
+                ctx.lineTo(tamanhoTotal * 1/3, tamanhoTotal);
+                ctx.stroke();
+                ctx.moveTo(tamanhoTotal * 2/3, 0           );
+                ctx.lineTo(tamanhoTotal * 2/3, tamanhoTotal);
+                ctx.stroke();
+                ctx.moveTo(0           , tamanhoTotal * 1/3);
+                ctx.lineTo(tamanhoTotal, tamanhoTotal * 1/3);
+                ctx.stroke();
+                ctx.moveTo(0           , tamanhoTotal * 2/3);
+                ctx.lineTo(tamanhoTotal, tamanhoTotal * 2/3);
+                ctx.stroke();
+            }
+
+            function desenharX(onde) {
+                const px = tamanhoTotal * onde.x;
+                const py = tamanhoTotal * onde.y;
+                const ctx = acharContexto();
+                ctx.strokeStyle = "red";
+                ctx.lineWidth = 15;
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(px - metadeCela + margem, py - metadeCela + margem);
+                ctx.lineTo(px + metadeCela - margem, py + metadeCela - margem);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(px - metadeCela + margem, py + metadeCela - margem);
+                ctx.lineTo(px + metadeCela - margem, py - metadeCela + margem);
+                ctx.stroke();
+            }
+
+            function desenharO(onde) {
+                const px = tamanhoTotal * onde.x;
+                const py = tamanhoTotal * onde.y;
+                const ctx = acharContexto();
+                ctx.lineWidth = 15;
+                ctx.strokeStyle = "blue";
+                ctx.beginPath();
+                ctx.ellipse(px, py, metadeCela - margem, metadeCela - margem, 0, 0, 2 * Math.PI);
+                ctx.stroke();
+            }
+
+            function desenharCorte(tripla) {
+                const ctx = acharContexto();
+                ctx.lineWidth = 15;
+                ctx.strokeStyle = "black";
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(tripla.x1 * tamanhoTotal, tripla.y1 * tamanhoTotal);
+                ctx.lineTo(tripla.x2 * tamanhoTotal, tripla.y2 * tamanhoTotal);
+                ctx.stroke();
+            }
+
+            function desenhar() {
+                limpar();
+                desenharGrade();
+                for (const p in jogo) {
+                    const posicao = jogo[p];
+                    if (posicao.conteudo === "X") {
+                        desenharX(posicao);
+                    } else if (posicao.conteudo === "O") {
+                        desenharO(posicao);
+                    }
+                }
+                const tripla = verificarVitoria("X") ?? verificarVitoria("O");
+                if (!tripla) return;
+                desenharCorte(tripla);
+            }
+
+            // Parte de funcionamento:
+
+            let jogo, vez, acabou, xComputador, oComputador;
+
+            async function inicio(bt, x, o) {
+                [...document.querySelectorAll("button")].forEach(b => b.classList.remove("escolhido"));
+                bt.classList.add("escolhido");
+                xComputador = x;
+                oComputador = o;
+                jogo = {
+                    "A1": {conteudo: "", x: 1/6, y: 1/6}, "A2": {conteudo: "", x: 1/2, y: 1/6}, "A3": {conteudo: "", x: 5/6, y: 1/6},
+                    "B1": {conteudo: "", x: 1/6, y: 1/2}, "B2": {conteudo: "", x: 1/2, y: 1/2}, "B3": {conteudo: "", x: 5/6, y: 1/2},
+                    "C1": {conteudo: "", x: 1/6, y: 5/6}, "C2": {conteudo: "", x: 1/2, y: 5/6}, "C3": {conteudo: "", x: 5/6, y: 5/6}
+                };
+                vez = "X";
+                acabou = false;
+                definirTexto(`Vez de X${tipoJogador("X")}`);
+                for (const c in jogo) {
+                    jogo[c].conteudo = "";
+                }
+                desenhar();
+                await jogar();
+            }
+
+            function definirTexto(texto) {
+                document.getElementById("status").innerHTML = texto;
+            }
+
+            async function escolheu(evento) {
+                if (acabou) return;
+                if (xComputador && vez === "X") return;
+                if (oComputador && vez === "O") return;
+                const px = Math.floor(3 * evento.offsetX / tamanhoTotal);
+                const py = Math.floor(3 * evento.offsetY / tamanhoTotal);
+                if (px < 0 || py < 0 || px > 2 || py > 2) return;
+                const linha  = ["A", "B", "C"][py];
+                const coluna = ["1", "2", "3"][px];
+                const onde = linha + coluna;
+                if (jogo[onde].conteudo !== "") return;
+
+                jogo[onde].conteudo = vez;
+                passarAVez();
+                await jogar();
+            }
+
+            function passarAVez() {
+                if (verificarVitoria(vez)) {
+                    definirTexto(`Vitória de ${vez}${tipoJogador(vez)}`);
+                    acabou = true;
+                } else if (verificarCheio()) {
+                    definirTexto(`X${tipoJogador("X")} e O${tipoJogador("O")} empatam`);
+                    acabou = true;
+                } else {
+                    if (vez === "X") {
+                        vez = "O";
+                    } else {
+                        vez = "X";
+                    }
+                    definirTexto(`Vez de ${vez}${tipoJogador(vez)}`);
+                }
+                desenhar();
+            }
+
+            function verificarVitoria(quem) {
+                const triplas = [
+                    {p1: "A1", p2: "A2", p3: "A3", x1: 1/12, x2: 11/12, y1: 1/6, y2: 1/6 },
+                    {p1: "B1", p2: "B2", p3: "B3", x1: 1/12, x2: 11/12, y1: 1/2, y2: 1/2 },
+                    {p1: "C1", p2: "C2", p3: "C3", x1: 1/12, x2: 11/12, y1: 5/6, y2: 5/6 },
+                    {p1: "A1", p2: "B1", p3: "C1", y1: 1/12, y2: 11/12, x1: 1/6, x2: 1/6 },
+                    {p1: "A2", p2: "B2", p3: "C2", y1: 1/12, y2: 11/12, x1: 1/2, x2: 1/2 },
+                    {p1: "A3", p2: "B3", p3: "C3", y1: 1/12, y2: 11/12, x1: 5/6, x2: 5/6 },
+                    {p1: "A1", p2: "B2", p3: "C3", x1: 1/12, x2: 11/12, y1: 1/12, y2: 11/12 },
+                    {p1: "A3", p2: "B2", p3: "C1", x1: 1/12, x2: 11/12, y1: 11/12, y2: 1/12 }
+                ];
+                for (const t of triplas) {
+                    if (jogo[t.p1].conteudo === quem && jogo[t.p2].conteudo === quem && jogo[t.p3].conteudo === quem) return t;
+                }
+                return null;
+            }
+
+            function verificarCheio() {
+                for (const p in jogo) {
+                    if (jogo[p].conteudo === "") return false;
+                }
+                return true;
+            }
+
+            async function carregado() {
+                const canvas = acharCanvas();
+                canvas.width = tamanhoTotal;
+                canvas.height = tamanhoTotal;
+                canvas.addEventListener("click", escolheu);
+                await inicio(document.querySelector("button"), false, false);
+            }
+
+            function tipoJogador(vez) {
+                if ((vez === "X" && xComputador) || (vez === "O" && oComputador)) return "🤖";
+                return "🧠";
+            }
+
+            // Inteligência artificial.
+
+            function esperar(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            async function jogar() {
+                while (!acabou) {
+                    if (vez === "X" && xComputador) {
+                        await jogarIA("X", "O");
+                        passarAVez();
+                    } else if (vez === "O" && oComputador) {
+                        await jogarIA("O", "X");
+                        passarAVez();
+                    } else {
+                        desenhar();
+                        break;
+                    }
+                }
+            }
+
+            async function jogarIA(quem, adversario) {
+                await esperar(200);
+                const tentativa = tentarIA(quem, adversario, 0);
+                jogo[tentativa.local].conteudo = quem;
+            }
+
+            function tentarIA(quem, adversario, jogadas) {
+                let possibilidades = [];
+                for (const onde in jogo) {
+                    if (jogo[onde].conteudo !== "") continue;
+                    jogo[onde].conteudo = quem;
+
+                    if (verificarVitoria(quem)) {
+                        possibilidades.push({pontos: 1, local: onde, jogadas: jogadas});
+                    } else if (verificarCheio()) {
+                        possibilidades.push({pontos: 0, local: onde, jogadas: jogadas});
+                    } else {
+                        const melhorMovimentoDoAdversario = tentarIA(adversario, quem, jogadas + 1);
+                        possibilidades.push({pontos: -melhorMovimentoDoAdversario.pontos, local: onde, jogadas: jogadas});
+                    }
+
+                    jogo[onde].conteudo = "";
+                }
+
+                embaralhar(possibilidades);
+
+                for (let j = 0; j < 9; j++) {
+                    for (const p of possibilidades) {
+                        if (p.jogadas === j && p.pontos === 1) return p;
+                    }
+                }
+
+                for (const p of possibilidades) {
+                    if (p.pontos === 0) return p;
+                }
+
+                for (let j = 8; j >= 0; j--) {
+                    for (const p of possibilidades) {
+                        if (p.jogadas === j) return p;
+                    }
+                }
+
+                return possibilidades[0];
+            }
+
+            function embaralhar(lista) {
+                for (let i = lista.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [lista[i], lista[j]] = [lista[j], lista[i]];
+                }
+            }
+        </script>
+    </head>
+    <body onload="carregado()">
+        <h1>Jogo da velha</h1>
+        <canvas></canvas>
+        <p>Status: <span id="status"></span></p>
+        <button type="button" onclick="inicio(this, false, false)">🧠 vs 🧠</button>
+        <button type="button" onclick="inicio(this, false, true )">🧠 vs 🤖</button>
+        <button type="button" onclick="inicio(this, true , false)">🤖 vs 🧠</button>
+        <button type="button" onclick="inicio(this, true , true )">🤖 vs 🤖</button>
+    </body>
+</html>
